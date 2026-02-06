@@ -1,0 +1,66 @@
+import speech_recognition as sr 
+import moviepy.editor as mp
+from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
+import os
+import sys
+
+# Define constants
+VIDEO_FILE = "videorl.mp4"
+NUM_SECONDS_VIDEO = 52 * 60
+
+# --- Setup: Verify Files and Folders ---
+if not os.path.exists(VIDEO_FILE):
+    print(f"Error: Video file '{VIDEO_FILE}' not found in the current directory.")
+    sys.exit(1) # Exit if the main video is missing
+
+# Create necessary directories if they don't exist
+os.makedirs("chunks", exist_ok=True)
+os.makedirs("converted", exist_ok=True)
+
+# --- Main Processing Loop ---
+print("The video is {} seconds long.".format(NUM_SECONDS_VIDEO))
+# Generate list of timestamps (every 60 seconds)
+time_stamps = list(range(0, NUM_SECONDS_VIDEO + 1, 60))
+
+diz = {}
+# Iterate through all but the last timestamp
+for i in range(len(time_stamps) - 1):
+    start_time = time_stamps[i]
+    end_time = time_stamps[i+1]
+    
+    # Adjust start time slightly if it's not the very beginning (as in original logic)
+    actual_start = start_time - 2 if start_time != 0 else start_time
+    
+    chunk_video_path = f"chunks/cut{i+1}.mp4"
+    chunk_audio_path = f"converted/converted{i+1}.wav"
+    
+    print(f"Processing chunk {i+1} from {actual_start}s to {end_time}s...")
+
+    try:
+        # Extract video subclip
+        ffmpeg_extract_subclip(VIDEO_FILE, actual_start, end_time, targetname=chunk_video_path)
+        
+        # Extract audio from subclip
+        clip = mp.VideoFileClip(chunk_video_path) 
+        clip.audio.write_audiofile(chunk_audio_path)
+        clip.close() # Important to close the clip file handle
+        
+        # Transcribe audio
+        r = sr.Recognizer()
+        with sr.AudioFile(chunk_audio_path) as source:
+            r.adjust_for_ambient_noise(source)  
+            audio_file = r.record(source)
+        
+        result = r.recognize_google(audio_file)
+        diz[f'chunk{i+1}'] = result
+        print(f"Successfully transcribed chunk {i+1}.")
+
+    except Exception as e:
+        print(f"An error occurred while processing chunk {i+1}: {e}")
+        diz[f'chunk{i+1}'] = f"ERROR: {e}"
+
+# --- Final Output ---
+print("\n--- Processing Complete ---")
+# Print the results dictionary (optional, but useful to see the outcome)
+# print(diz) 
+
